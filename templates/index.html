@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plant AI Diagnostics</title>
+    
+    <!-- Modern Tech Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    
+    <!-- GSAP & Three.js for interactive 3D experience -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    
+    <style>
+        :root {
+            --brand: #00ff88;
+            --brand-dark: #00cc6a;
+            --bg-base: #0a0a0a;
+            --surface: rgba(15, 15, 15, 0.6);
+            --surface-border: rgba(255, 255, 255, 0.08);
+            --text-main: #ffffff;
+            --text-muted: #888888;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            background-color: var(--bg-base);
+            overflow: hidden; /* Prevent scrolling for the full 3D app feel */
+        }
+
+        /* Three.js Canvas takes up full background */
+        #webgl-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* WebGL overlay gradient for depth */
+        .vignette {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, rgba(10, 10, 10, 0.8) 100%);
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* UI Layout Engine */
+        .app-layout {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end; /* Align card to the right side */
+            padding-right: 8vw;
+            pointer-events: none; /* Let clicks pass through where there is no UI */
+        }
+
+        /* Left side content (Title floating over 3D scene) */
+        .hero-section {
+            position: absolute;
+            left: 8vw;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: auto;
+            max-width: 500px;
+        }
+
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 4.5rem;
+            font-weight: 700;
+            line-height: 1.05;
+            letter-spacing: -2px;
+            margin-bottom: 1.5rem;
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        .highlight {
+            color: var(--brand);
+            display: block;
+            text-shadow: 0 0 40px rgba(0, 255, 136, 0.4);
+        }
+
+        .subtitle {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            font-weight: 300;
+            max-width: 400px;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        /* Right side Interactive Panel */
+        .panel {
+            width: 460px;
+            background: var(--surface);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--surface-border);
+            border-radius: 24px;
+            padding: 3rem 2.5rem;
+            pointer-events: auto; /* Re-enable clicks for the panel */
+            box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+            opacity: 0;
+            transform: translateX(40px);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Ambient panel glow */
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--brand), transparent);
+            opacity: 0.5;
+        }
+
+        /* Upload System */
+        .upload-area {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 2.5rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            background: rgba(255,255,255,0.02);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .upload-area:hover {
+            border-color: rgba(0, 255, 136, 0.4);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .upload-area.dragover {
+            border-color: var(--brand);
+            background: rgba(0, 255, 136, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-area input[type="file"] { display: none; }
+
+        .upload-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 1.2rem;
+            color: var(--brand);
+            transition: transform 0.3s ease;
+        }
+
+        .upload-area:hover .upload-icon {
+            transform: translateY(-5px);
+        }
+
+        .upload-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+
+        .upload-text {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Image Preview Box */
+        .preview-wrapper {
+            display: none;
+            position: relative;
+            width: 100%;
+            height: 220px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--surface-border);
+        }
+
+        #imagePreview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .reset-btn {
+            position: absolute;
+            top: 10px; right: 10px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .reset-btn:hover {
+            background: rgba(255, 59, 48, 0.8);
+            transform: scale(1.1);
+        }
+
+        /* Tech Button */
+        .btn-tech {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--text-main);
+            color: var(--bg-base);
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            opacity: 0.5;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-tech.active {
+            opacity: 1;
+            pointer-events: all;
+            background: var(--brand);
+            color: #000;
+        }
+
+        .btn-tech.active:hover {
+            background: var(--brand-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 255, 136, 0.3);
+        }
+
+        /* Loader */
+        .loader-bar {
+            display: none;
+            width: 100%;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+            margin-top: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .loader-progress {
+            position: absolute;
+            top: 0; left: 0; height: 100%;
+            width: 30%;
+            background: var(--brand);
+            box-shadow: 0 0 10px var(--brand);
+            animation: progress-slide 1s infinite alternate ease-in-out;
+        }
+
+        @keyframes progress-slide {
+            0% { left: -30%; }
+            100% { left: 100%; }
+        }
+
+        /* Results Display */
+        .results-container {
+            margin-top: 2rem;
+            display: none;
+            border-top: 1px solid var(--surface-border);
+            padding-top: 2rem;
+        }
+
+        .diag-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .diag-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--brand);
+            line-height: 1.2;
+            margin-bottom: 1rem;
+        }
+
+        .confidence-meter {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: var(--brand);
+            width: 0%;
+            transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .confidence-text {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: right;
+            display: block;
+        }
+
+        /* Responsive Layout */
+        @media (max-width: 1024px) {
+            .app-layout {
+                flex-direction: column;
+                justify-content: center;
+                padding: 2rem;
+                gap: 3rem;
+            }
+            .hero-section {
+                position: relative;
+                left: auto;
+                top: auto;
+                transform: none;
+                text-align: center;
+            }
+            .panel {
+                transform: translateY(40px);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Professional WebGL Background -->
+    <div id="webgl-container"></div>
+    <div class="vignette"></div>
+
+    <div class="app-layout">
+        
+        <!-- App Identity -->
+        <div class="hero-section">
+            <h1 id="titleText">Botanical<br><span class="highlight">Intelligence.</span></h1>
+            <p class="subtitle" id="subtitleText">Neural network diagnostics for agricultural health. Upload a high-resolution leaf scan to initiate analysis.</p>
+        </div>
+
+        <!-- Interactive Tech Panel -->
+        <div class="panel" id="mainPanel">
+            <form id="uploadForm">
+                
+                <!-- Preview area -->
+                <div class="preview-wrapper" id="previewWrapper">
+                    <img id="imagePreview" alt="Analyzed Target" />
+                    <div class="reset-btn" id="resetBtn">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </div>
+                </div>
+                
+                <!-- Drop Area -->
+                <div class="upload-area" id="dropZone">
+                    <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 002-2v-4M17 8l-5-5-5 5M12 3v12"></path>
+                    </svg>
+                    <h3 class="upload-title">Select Specimen</h3>
+                    <p class="upload-text">Drag image here or click to browse</p>
+                    <input type="file" id="fileInput" accept="image/jpeg, image/png, image/jpg" />
+                </div>
+
+                <!-- Processing UI -->
+                <div class="loader-bar" id="loader">
+                    <div class="loader-progress"></div>
+                </div>
+                
+                <!-- Execution Button -->
+                <button type="submit" class="btn-tech" id="analyzeBtn">
+                    Run Diagnostics
+                </button>
+            </form>
+
+            <!-- Results Output -->
+            <div class="results-container" id="resultBox">
+                <div class="diag-label">Identified Pathology</div>
+                <div class="diag-value" id="resultDisease">--</div>
+                
+                <div class="diag-label">Model Confidence</div>
+                <div class="confidence-meter">
+                    <div class="confidence-fill" id="meterFill"></div>
+                </div>
+                <span class="confidence-text" id="resultConfidence">0%</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 1. PROFESSIONAL THREE.JS SETUP (Interactive Abstract Data Sphere)
+         * Creates a highly polished, interactive 3D particle sphere that visually
+         * responds to mouse movement, creating that premium "tech agency website" feel.
+         */
+        function initWebGL() {
+            const container = document.getElementById('webgl-container');
+            const scene = new THREE.Scene();
+            
+            const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 120;
+            // Shift camera slightly based on typical layout
+            camera.position.x = window.innerWidth > 1024 ? -30 : 0;
+
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Create a complex particle sphere representing "data/AI"
+            const geometry = new THREE.BufferGeometry();
+            const particlesCount = 3000;
+            const posArray = new Float32Array(particlesCount * 3);
+            const scaleArray = new Float32Array(particlesCount);
+            
+            // Generate points on a sphere
+            for(let i = 0; i < particlesCount; i++) {
+                // Spherical coordinates
+                const radius = 40 + (Math.random() * 5); // Base radius with slight noise
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                
+                // Convert to Cartesian
+                posArray[i*3] = radius * Math.sin(phi) * Math.cos(theta); // x
+                posArray[i*3+1] = radius * Math.sin(phi) * Math.sin(theta); // y
+                posArray[i*3+2] = radius * Math.cos(phi); // z
+                
+                scaleArray[i] = Math.random();
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            geometry.setAttribute('aScale', new THREE.BufferAttribute(scaleArray, 1));
+            
+            // Premium custom shader for glowing dots
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor: { value: new THREE.Color('#00ff88') }
+                },
+                vertexShader: `
+                    uniform float uTime;
+                    attribute float aScale;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+                        
+                        // Add organic distortion to the sphere
+                        float noise = sin(modelPosition.x * 0.1 + uTime) * cos(modelPosition.y * 0.1 + uTime) * 2.0;
+                        modelPosition.xyz += normal * noise; // Needs normal if we used standard geometry, but we are hacking it
+                        // Fake normal based on position since it's a sphere centered at 0,0,0
+                        vec3 fakeNormal = normalize(position);
+                        modelPosition.xyz += fakeNormal * noise;
+
+                        vec4 viewPosition = viewMatrix * modelPosition;
+                        vec4 projectedPosition = projectionMatrix * viewPosition;
+                        gl_Position = projectedPosition;
+                        
+                        // Dynamic sizing
+                        gl_PointSize = (10.0 * aScale) * (1.0 / - viewPosition.z);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uColor;
+                    void main() {
+                        // Soft point
+                        float dist = distance(gl_PointCoord, vec2(0.5));
+                        float strength = 0.05 / dist - 0.1;
+                        gl_FragColor = vec4(uColor, strength * 0.8);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            const particleSphere = new THREE.Points(geometry, material);
+            scene.add(particleSphere);
+
+            // Connect lines between close particles (The "Network" effect)
+            // To keep performance high, we use a wireframe icosahedron inside
+            const innerGeo = new THREE.IcosahedronGeometry(38, 2);
+            const innerMat = new THREE.MeshBasicMaterial({
+                color: '#00cc6a',
+                wireframe: true,
+                transparent: true,
+                opacity: 0.1
+            });
+            const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+            scene.add(innerMesh);
+
+            // Mouse tracking for parallax
+            let mouseX = 0;
+            let mouseY = 0;
+            let targetX = 0;
+            let targetY = 0;
+            const windowHalfX = window.innerWidth / 2;
+            const windowHalfY = window.innerHeight / 2;
+
+            document.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX - windowHalfX);
+                mouseY = (event.clientY - windowHalfY);
+            });
+
+            const clock = new THREE.Clock();
+
+            // Render loop
+            function animate() {
+                requestAnimationFrame(animate);
+                const elapsedTime = clock.getElapsedTime();
+
+                // Update shaders
+                material.uniforms.uTime.value = elapsedTime;
+
+                // Rotate objects
+                particleSphere.rotation.y = elapsedTime * 0.1;
+                particleSphere.rotation.z = elapsedTime * 0.05;
+                
+                innerMesh.rotation.y = elapsedTime * -0.05;
+                innerMesh.rotation.x = elapsedTime * 0.08;
+
+                // Mouse parallax smoothing
+                targetX = mouseX * 0.001;
+                targetY = mouseY * 0.001;
+                
+                scene.rotation.x += (targetY - scene.rotation.x) * 0.05;
+                scene.rotation.y += (targetX - scene.rotation.y) * 0.05;
+
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            // Handle Resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.position.x = window.innerWidth > 1024 ? -30 : 0;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        /**
+         * 2. UI LOGIC & SLEEK GSAP ANIMATIONS
+         */
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const previewWrapper = document.getElementById('previewWrapper');
+        const imagePreview = document.getElementById('imagePreview');
+        const resetBtn = document.getElementById('resetBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const uploadForm = document.getElementById('uploadForm');
+        
+        const loader = document.getElementById('loader');
+        const resultBox = document.getElementById('resultBox');
+        const meterFill = document.getElementById('meterFill');
+        
+        let selectedFile = null;
+
+        // Intro GSAP Timeline
+        window.addEventListener('load', () => {
+            initWebGL();
+            
+            const tl = gsap.timeline();
+            tl.to('#titleText', { opacity: 1, y: 0, duration: 1, ease: 'power3.out', delay: 0.2 })
+              .to('#subtitleText', { opacity: 1, y: 0, duration: 1, ease: 'power3.out' }, "-=0.7")
+              .to('#mainPanel', { 
+                  opacity: 1, 
+                  x: 0, 
+                  y: window.innerWidth <= 1024 ? 0 : null, 
+                  duration: 1.2, 
+                  ease: 'expo.out' 
+              }, "-=0.8");
+        });
+
+        // Dropzone Logic
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); });
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            if(e.dataTransfer.files.length) handleSelectedFile(e.dataTransfer.files[0]);
+        });
+
+        fileInput.addEventListener('change', function() {
+            if(this.files.length) handleSelectedFile(this.files[0]);
+        });
+
+        // UI Handlers
+        function handleSelectedFile(file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Invalid payload. Please provide a standard image stream (JPG, PNG).');
+                return;
+            }
+            
+            selectedFile = file;
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                
+                // Hide drop zone, show tech preview
+                gsap.to(dropZone, { 
+                    opacity: 0, height: 0, padding: 0, duration: 0.4, ease: 'power2.inOut',
+                    onComplete: () => {
+                        dropZone.style.display = 'none';
+                        previewWrapper.style.display = 'block';
+                        
+                        gsap.fromTo(previewWrapper, 
+                            { opacity: 0, height: 0 }, 
+                            { opacity: 1, height: 220, duration: 0.6, ease: 'expo.out' }
+                        );
+                        
+                        analyzeBtn.classList.add('active');
+                        analyzeBtn.textContent = 'Run Diagnostics';
+                        
+                        if(resultBox.style.display === 'block') hideResults();
+                    }
+                });
+            }
+            reader.readAsDataURL(file);
+        }
+        
+        function hideResults() {
+            gsap.to(resultBox, { 
+                opacity: 0, height: 0, padding: 0, duration: 0.4, ease: 'power2.inOut',
+                onComplete: () => {
+                    resultBox.style.display = 'none';
+                    meterFill.style.width = '0%';
+                }
+            });
+        }
+
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.value = '';
+            selectedFile = null;
+            
+            analyzeBtn.classList.remove('active');
+            hideResults();
+            
+            gsap.to(previewWrapper, {
+                opacity: 0, height: 0, duration: 0.4, ease: 'power2.inOut',
+                onComplete: () => {
+                    previewWrapper.style.display = 'none';
+                    dropZone.style.display = 'block';
+                    dropZone.style.height = 'auto';
+                    dropZone.style.padding = '2.5rem 1.5rem';
+                    
+                    gsap.fromTo(dropZone, 
+                        { opacity: 0 }, 
+                        { opacity: 1, duration: 0.5, ease: 'power2.out' }
+                    );
+                }
+            });
+        });
+
+        // Backend Communication
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!selectedFile) return;
+
+            // Loading state
+            analyzeBtn.style.pointerEvents = 'none';
+            analyzeBtn.textContent = 'Processing...';
+            loader.style.display = 'block';
+            
+            hideResults();
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('/predict', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.error);
+
+                // Success DOM updates
+                document.getElementById('resultDisease').textContent = data.prediction;
+                document.getElementById('resultDisease').style.color = 'var(--brand)';
+                
+                // Parse percentage string (e.g., "98.50%") into a number for the animated bar
+                const confValue = parseFloat(data.confidence);
+                document.getElementById('resultConfidence').textContent = `${data.confidence} Match Rate`;
+
+                // Display block so GSAP can animate the height
+                resultBox.style.display = 'block';
+                gsap.fromTo(resultBox, 
+                    { opacity: 0, height: 0, paddingTop: 0 },
+                    { opacity: 1, height: 'auto', paddingTop: '2rem', duration: 0.6, ease: 'expo.out',
+                      onComplete: () => {
+                          // Animate the confidence meter bar
+                          meterFill.style.width = `${confValue}%`;
+                          meterFill.style.background = confValue > 80 ? 'var(--brand)' : (confValue > 50 ? '#ffb700' : '#ff3333');
+                      }
+                    }
+                );
+
+            } catch (error) {
+                // Error DOM updates
+                document.getElementById('resultDisease').textContent = "Diagnostic Failed";
+                document.getElementById('resultDisease').style.color = '#ff3333';
+                document.getElementById('resultConfidence').textContent = "Model connection error.";
+                meterFill.style.width = '0%';
+                
+                resultBox.style.display = 'block';
+                gsap.fromTo(resultBox, 
+                    { opacity: 0, height: 0, paddingTop: 0 },
+                    { opacity: 1, height: 'auto', paddingTop: '2rem', duration: 0.6, ease: 'expo.out' }
+                );
+                console.error('Diagnostic Error:', error);
+
+            } finally {
+                // Restore button
+                loader.style.display = 'none';
+                analyzeBtn.textContent = 'Re-Run Diagnostics';
+                analyzeBtn.style.pointerEvents = 'all';
+            }
+        });
+    </script>
+</body>
+</html>
