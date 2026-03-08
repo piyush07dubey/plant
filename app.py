@@ -21,7 +21,7 @@ except Exception as e:
     print(f"❌ Error loading model: {e}")
     model = None
 
-# Class names based on the training dataset folders
+
 CLASS_NAMES = [
     'Apple___Apple_scab',
     'Apple___Black_rot',
@@ -36,10 +36,7 @@ def preprocess_image(image_bytes):
     img_array = tf.keras.preprocessing.image.img_to_array(img)
     img_array = tf.expand_dims(img_array, 0) # Create a batch
     
-    # Very important: Apply the exact same preprocessing that the 
-    # MobileNetV2 base model expects!
-    processed_image = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
-    return processed_image
+    return img_array
 
 
 @app.route('/', methods=['GET'])

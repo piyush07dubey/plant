@@ -699,7 +699,8 @@
             analyzeBtn.textContent = 'Processing...';
             loader.style.display = 'block';
             
-            hideResults();
+            gsap.killTweensOf([resultBox, meterFill]);
+            resultBox.style.display = 'none';
 
             const formData = new FormData();
             formData.append('file', selectedFile);
